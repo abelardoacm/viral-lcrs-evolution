@@ -1,0 +1,4 @@
+"0","archaea_pcount <- archaea_all[!is.na(archaea_all$`Annotation Count Gene Protein-coding`),]"
+"0","archaea_pcount <- archaea_pcount[!is.na(archaea_pcount$species),]"
+"0","archaea_pcount$pcount <- archaea_pcount$`Annotation Count Gene Protein-coding`"
+"0","archaea_pcount"

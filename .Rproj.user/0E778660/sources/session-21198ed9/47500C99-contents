@@ -1,0 +1,287 @@
+---
+title: "Reducción_redundancia"
+author: "Les nutries"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+#### Primero leemos la tabla completa de arqueas disponibles en "Genomes" NCBI
+
+```{r leer_tabla}
+archaea_all <- read_csv("../data/0_archaea_all_taxized.csv")
+archaea_all
+```
+
+#### Sin embargo, no todas tienen conteo de proteína y para la pangenómica es necesario un achivo .faa. Eliminaremos ahora los genomas que no cuenten con un archivo .faa
+
+```{r filter_by_pcount}
+archaea_pcount <- archaea_all[!is.na(archaea_all$`Annotation Count Gene Protein-coding`),]
+archaea_pcount <- archaea_pcount[!is.na(archaea_pcount$species),]
+archaea_pcount$pcount <- archaea_pcount$`Annotation Count Gene Protein-coding`
+archaea_pcount
+```
+
+#### Ahora tenemos el conjunto más inclusivo posible de arqueas en la base de datos con archivo .faa. Sin embargo aún son demasiadas y debemos filtrarlas pero ahora en base a redundancia taxonómica. 
+
+### Criterio 1: No queremos más de un genoma por especie
+
+#### Para escoger a nuestros 3 representantes, ordenaremos la tabla conforme a las siguientes prioridades jerárquicas:
+
+ - 1.- Nivel de ensamblaje (complete genome > chromosome > scaffold)
+ - 2.- Conteo de proteínas
+ - 3.- Fecha
+ 
+ 
+```{r sort_priorities}
+archaea_pcount$`Assembly Level` <- as.factor(archaea_pcount$`Assembly Level`)
+archaea_pcount$`Assembly Level` <- factor(archaea_pcount$`Assembly Level`,  levels = c("Complete Genome", "Chromosome", "Scaffold"))
+archaea_pcount$Assembly_score <- unclass(archaea_pcount$`Assembly Level`)
+
+
+archaea_pcount_sorted <- archaea_pcount %>% arrange(species,
+                           Assembly_score,
+                           desc(pcount),
+                           desc(`Assembly Submission Date`))
+
+archaea_pcount_sorted$selection_priority <- 1
+
+for (i in 2:nrow(archaea_pcount_sorted)) {
+  if(archaea_pcount_sorted$species[i] != archaea_pcount_sorted$species[i-1]){
+    archaea_pcount_sorted$selection_priority[i] <- 1
+  } else {
+    archaea_pcount_sorted$selection_priority[i] <- archaea_pcount_sorted$selection_priority[i-1] + 1
+  }
+}
+
+
+```
+
+#### Ahora con la columna "selection priority" podemos escoger un valor máximo de genomas por especie. En nuestro caso será de tres.
+
+
+```{r max_count}
+max_count <- 1
+```
+
+
+```{r reduced_by_species}
+reduced_by_species <- archaea_pcount_sorted[(!archaea_pcount_sorted$selection_priority > max_count),]
+reduced_by_species
+```
+
+### Genomas restantes : 1112
+
+### Criterio 2: Solo aquellos clasificados hasta phylum
+
+#### Eliminaremos aquellas para las cuales no se tiene informaciónalguna sobre el phylum al que pertenecen.
+
+```{r reduced_by_phylum}
+reduced_by_phylum <- reduced_by_species[which(!is.na(reduced_by_species$phylum)),]
+reduced_by_phylum
+```
+
+### Criterio 3: Reducción porcentual por representatividad
+
+#### En este punto, notamos que no valdría la pena realizar una reducción homogenea, debido a que los phyla están representados de forma muy heterogenea. Para ello, agrupamos en 3 categorías:
+
+ - Con menos de 100 genomas
+ - Más de 100, menos de 500
+ - Más de 500
+ 
+#### Con ello realizaremos una reducción porcentual, siendo más astringentes en aquellos que lo permiten, es decir, los que tienen más genomas. Primero necesitamos nuestras tres tablas.
+
+```{r grouped_by_representatives}
+
+Count_by_phylum <- reduced_by_phylum %>% group_by(phylum) %>% summarise(r_count = n())
+Under100 <- Count_by_phylum %>% filter(r_count < 100) %>% select(phylum)
+Over100 <- Count_by_phylum %>% filter(r_count > 100) %>% filter(r_count < 500) %>% select(phylum)
+Over500 <- Count_by_phylum %>% filter(r_count > 500) %>% select(phylum)
+
+Under100_tb <- reduced_by_phylum %>% filter(phylum %in% Under100$phylum)
+Over100_tb <- reduced_by_phylum %>% filter(phylum %in% Over100$phylum)
+Over500_tb <- reduced_by_phylum %>% filter(phylum %in% Over500$phylum)
+```
+
+#### Ahora nos enfocamos en reducciones con criterios distintos dependiendo de la situación particular por tabla.
+
+## Under100
+
+```{r Under100_reduction}
+
+Under100_tb_decisions <- Under100_tb %>% group_by(phylum) %>% summarise(phylum_count = n(), remaining = ceiling(0.8 * n()))
+Under100_tb_decisions
+
+Under100_tb$lottery <- sample(1:nrow(Under100_tb))
+
+Under100_tb_sorted <- Under100_tb %>% arrange(phylum,
+                                              lottery)
+
+Under100_tb_sorted$selection_priority_2 <- 1
+
+for (i in 2:nrow(Under100_tb_sorted)) {
+  if(Under100_tb_sorted$phylum[i] != Under100_tb_sorted$phylum[i-1]){
+    Under100_tb_sorted$selection_priority_2[i] <- 1
+  } else {
+    Under100_tb_sorted$selection_priority_2[i] <- Under100_tb_sorted$selection_priority_2[i-1] + 1
+  }
+}
+
+Under100_tb_sorted$stays <- 1
+
+for (j in 1:nrow(Under100_tb_sorted)) {
+  current_phyllum <- Under100_tb_sorted$phylum[j]
+  current_threshold <- Under100_tb_decisions$remaining[grep(current_phyllum, Under100_tb_decisions$phylum)]
+  current_selection_priority <- Under100_tb_sorted$selection_priority_2[j]
+  if(current_selection_priority > current_threshold){Under100_tb_sorted$stays[j] <- 0}
+}
+
+
+
+```
+
+
+###Over100
+
+```{r Over100_reduction}
+
+Over100_tb_decisions <- Over100_tb %>% group_by(phylum) %>% summarise(phylum_count = n(), remaining = ceiling(0.75 * n()))
+Over100_tb_decisions
+
+Over100_tb$lottery <- sample(1:nrow(Over100_tb))
+
+Over100_tb_sorted <- Over100_tb %>% arrange(phylum,
+                                              lottery)
+
+Over100_tb_sorted$selection_priority_2 <- 1
+
+for (i in 2:nrow(Over100_tb_sorted)) {
+  if(Over100_tb_sorted$phylum[i] != Over100_tb_sorted$phylum[i-1]){
+    Over100_tb_sorted$selection_priority_2[i] <- 1
+  } else {
+    Over100_tb_sorted$selection_priority_2[i] <- Over100_tb_sorted$selection_priority_2[i-1] + 1
+  }
+}
+
+Over100_tb_sorted$stays <- 1
+
+for (j in 1:nrow(Over100_tb_sorted)) {
+  current_phyllum <- Over100_tb_sorted$phylum[j]
+  current_threshold <- Over100_tb_decisions$remaining[grep(current_phyllum, Over100_tb_decisions$phylum)]
+  current_selection_priority <- Over100_tb_sorted$selection_priority_2[j]
+  if(current_selection_priority > current_threshold){Over100_tb_sorted$stays[j] <- 0}
+}
+
+
+
+```
+
+
+###Over500
+
+```{r Over100_reduction}
+
+Over500_tb_decisions <- Over500_tb %>% group_by(phylum) %>% summarise(phylum_count = n(), remaining = ceiling(0.7 * n()))
+Over500_tb_decisions
+
+Over500_tb$lottery <- sample(1:nrow(Over500_tb))
+
+Over500_tb_sorted <- Over500_tb %>% arrange(phylum,
+                                              lottery)
+
+Over500_tb_sorted$selection_priority_2 <- 1
+
+for (i in 2:nrow(Over500_tb_sorted)) {
+  if(Over500_tb_sorted$phylum[i] != Over500_tb_sorted$phylum[i-1]){
+    Over500_tb_sorted$selection_priority_2[i] <- 1
+  } else {
+    Over500_tb_sorted$selection_priority_2[i] <- Over500_tb_sorted$selection_priority_2[i-1] + 1
+  }
+}
+
+Over500_tb_sorted$stays <- 1
+
+for (j in 1:nrow(Over500_tb_sorted)) {
+  current_phyllum <- Over500_tb_sorted$phylum[j]
+  current_threshold <- Over500_tb_decisions$remaining[grep(current_phyllum, Over500_tb_decisions$phylum)]
+  current_selection_priority <- Over500_tb_sorted$selection_priority_2[j]
+  if(current_selection_priority > current_threshold){Over500_tb_sorted$stays[j] <- 0}
+}
+
+
+
+
+```
+
+#### Ahora cortaremos cada una de las tablas para dejar sólo los genomas que nos interesan de cada phylum.
+
+
+```{r Phylum_reduction}
+
+# Primero combinamos todas las tablas
+Phylum_decisions <- rbind(Under100_tb_sorted,Over100_tb_sorted,Over500_tb_sorted)
+
+# Luego eliminamos todas aquellas filas con valor de 0 en la columna "stays"
+
+Phylum_reduced <- Phylum_decisions[grepl(1,Phylum_decisions$stays),]
+Phylum_reduced
+
+```
+
+### Criterio 4: Reducción específica en linajes sobre representados. Estableceremos tomar un genoma por género.
+
+```{r Family_reduction}
+
+Phylum_reduced_fulltax <- Phylum_reduced %>% unite("Full_taxonomy", phylum:genus, na.rm = TRUE, remove = FALSE)
+
+Phylum_reduced_fulltax$`Assembly Level` <- as.factor(Phylum_reduced_fulltax$`Assembly Level`)
+Phylum_reduced_fulltax$`Assembly Level` <- factor(Phylum_reduced_fulltax$`Assembly Level`,  levels = c("Complete Genome", "Chromosome", "Scaffold"))
+Phylum_reduced_fulltax$Assembly_score <- unclass(Phylum_reduced_fulltax$`Assembly Level`)
+
+Phylum_reduced_fulltax_sorted <- Phylum_reduced_fulltax %>% arrange(Full_taxonomy,
+                           Assembly_score,
+                           desc(pcount),
+                           desc(`Assembly Submission Date`))
+
+Phylum_reduced_fulltax_sorted$selection_priority <- 1
+
+for (i in 2:nrow(Phylum_reduced_fulltax_sorted)) {
+  if(Phylum_reduced_fulltax_sorted$Full_taxonomy[i] != Phylum_reduced_fulltax_sorted$Full_taxonomy[i-1]){
+    Phylum_reduced_fulltax_sorted$selection_priority[i] <- 1
+  } else {
+    Phylum_reduced_fulltax_sorted$selection_priority[i] <- Phylum_reduced_fulltax_sorted$selection_priority[i-1] + 1
+  }
+}
+
+max_count <- 3
+
+reduced_by_genus <- Phylum_reduced_fulltax_sorted[(!Phylum_reduced_fulltax_sorted$selection_priority > max_count),]
+reduced_by_genus
+
+```
+
+```{r save_genome_list}
+
+sink("reduced_genome_list.txt")
+for (i in 1:nrow(reduced_by_genus)) {
+  id <- reduced_by_genus$`Assembly Accession...2`[i]
+  cat(gsub("\\..*","",id))
+  cat("\t")
+  cat(gsub(" ","_",reduced_by_genus$species[i]))
+  cat("\n")
+}
+sink()
+
+readr::write_csv(reduced_by_genus, "reduced_genomes_metadata.csv")
+
+```
+
+
+
+
+
+

@@ -1,0 +1,6 @@
+"0","seg.complexity.metadata.df$is_LCR <- ifelse(str_detect(seg.complexity.metadata.df$seg_sequence, ""^[:lower:]+$""), ""LCR"","""")"
+"0",""
+"0","seg.complexity.metadata.df$local_ID <- paste(seg.complexity.metadata.df$Entry,"
+"0","      seg.complexity.metadata.df$seg_Start,"
+"0","      seg.complexity.metadata.df$seg_End,"
+"0","      seg.complexity.metadata.df$is_LCR,sep = ""_"")"

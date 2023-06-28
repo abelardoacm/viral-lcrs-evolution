@@ -1,0 +1,144 @@
+---
+title: "4_Post_By_Prevalence_by_GO"
+author: "Abelardo"
+date: "2023-03-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(parallel)
+library(hrbrthemes)
+library(viridis)
+```
+
+```{r arguments}
+filepath.metadata.tsv <- "../results/3_reviewed_Virus_Uniprot_metadata.tsv"
+Uniprot.tsv.filepath <- "../data/0_reviewed_Virus_Uniprot.tsv"
+```
+
+```{r input_read}
+seg.complexity.metadata.df <-readr::read_tsv(filepath.metadata.tsv)
+Uniprot.tsv.df <- readr::read_tsv(Uniprot.tsv.filepath)
+```
+
+```{r local_ID}
+seg.complexity.metadata.df$is_LCR <- ifelse(str_detect(seg.complexity.metadata.df$seg_sequence, "^[:lower:]+$"), "LCR","")
+
+seg.complexity.metadata.df$local_ID <- paste(seg.complexity.metadata.df$Entry,
+      seg.complexity.metadata.df$seg_Start,
+      seg.complexity.metadata.df$seg_End,
+      seg.complexity.metadata.df$is_LCR,sep = "_")
+```
+
+
+```{r filter_withGO}
+
+complexity_withGO.df <- seg.complexity.metadata.df %>% filter(grepl("GO",seg.complexity.metadata.df$`Gene Ontology IDs`))
+
+# Extract all GO terms and IDs
+go_terms_cc <- str_extract_all(Uniprot.tsv.df$`Gene Ontology (cellular component)`, "(\\w+.*?) \\[GO:\\d+\\]") %>% unlist()
+go_terms_bp <- str_extract_all(Uniprot.tsv.df$`Gene Ontology (biological process)`, "(\\w+.*?) \\[GO:\\d+\\]") %>% unlist()
+go_terms_mf <- str_extract_all(Uniprot.tsv.df$`Gene Ontology (molecular function)`, "(\\w+.*?) \\[GO:\\d+\\]") %>% unlist()
+
+# Create a data frame
+go_df <- data.frame(GO_terms = c(go_terms_cc,go_terms_bp,go_terms_mf),
+                    GO_clas = c(rep("cc", times = length(go_terms_cc)),
+                              rep("bp", times = length(go_terms_bp)),
+                              rep("mf", times = length(go_terms_mf))))%>% distinct()
+
+go_df <- go_df %>% filter(!is.na(go_df$GO_terms))
+
+go_df$id <- str_extract_all(go_df$GO_terms, "GO:\\d+") %>% unlist()
+
+```
+
+```{r}
+
+retrieve_LCR_info_from_entry <- function(entry){
+  entry.df <- seg.complexity.metadata.df %>% filter(grepl(entry, seg.complexity.metadata.df$Entry))
+  entry.df.LCR <- entry.df %>% filter(grepl("LCR", entry.df$is_LCR))
+  entry.LCR.count <- entry.df.LCR %>% nrow()
+  entry.LCR.range <- sum(nchar(entry.df.LCR$seg_sequence))
+  entry.df.NO_LCR <- entry.df %>% filter(!grepl("LCR", entry.df$is_LCR))
+  entry.NO_LCR.range <- sum(nchar(entry.df.NO_LCR$seg_sequence))
+  entry.LCR_density <- entry.LCR.range/entry.NO_LCR.range
+  entry.return.df <- data.frame(
+    Entry = entry,
+    Length = entry.LCR.range + entry.NO_LCR.range,
+    LCR_count = entry.LCR.count,
+    LCR_range = entry.LCR.range,
+    NO_LCR_range = entry.NO_LCR.range,
+    LCR_density = entry.LCR_density,
+    GO_IDS = entry.df$`Gene Ontology IDs`[1]
+  )
+  entry.return.df
+  return(entry.return.df)
+}
+
+num_cores <- detectCores()
+entries.retrieve_LCR_info.df <- do.call("rbind",mclapply(Uniprot.tsv.df$Entry, retrieve_LCR_info_from_entry, mc.cores = num_cores))
+
+```
+
+
+```{r}
+
+retrieve_entries_from_GO <- function(cur_go_id){
+  cur.entries.go <- entries.retrieve_LCR_info.df %>% filter(grepl(cur_go_id,GO_IDS))
+  cur_go_obs_count <- cur.entries.go$Entry %>% unique() %>% length()
+  cur.cbind.entries.go <- cbind(cur.entries.go,cur_go_id,cur_go_obs_count)
+  cur.cbind.entries.go
+  return(cur.cbind.entries.go) 
+}
+
+retrieve_entries_from_GO.df <- do.call("rbind",mclapply(go_df$id, retrieve_entries_from_GO, mc.cores = num_cores))
+
+merged.retrieve_entries_from_GO.df <- merge(retrieve_entries_from_GO.df, go_df, by.x = "cur_go_id", by.y = "id")
+```
+
+```{r}
+
+summarised_GO_LCR <- merged.retrieve_entries_from_GO.df %>% group_by(cur_go_id) %>%
+  summarise(LCR_count_by_GO = sum(LCR_count),n = n(), average_count = mean(LCR_count))
+
+merged_summarised <- merge(merged.retrieve_entries_from_GO.df,
+      summarised_GO_LCR, 
+      by = intersect(names(merged.retrieve_entries_from_GO.df), names(summarised_GO_LCR)),
+      all.x = TRUE)
+
+# Remove GO terms without LCR observations and low representation (less than r_cutoff)
+r_cutoffs = c(5,10,20,50,100,150)
+
+for (c in r_cutoffs) {
+  
+  LCRs_boxplot1 <- merged_summarised %>% 
+    filter(n > c) %>%
+    filter(GO_clas == "mf") %>%
+    ggplot(aes(x=reorder(GO_terms, average_count),y=LCR_count))+
+    geom_boxplot(outlier.shape = NA)+
+    coord_flip()+
+    theme_ipsum()
+
+  print(LCRs_boxplot1)
+  
+  out_ggsave = paste("../results/4_LCRs_boxplot_cutoff",c,".svg", sep = "")
+  ggsave(out_ggsave, LCRs_boxplot1, width = 20, height = 60, units = "cm")
+}
+
+```
+# Plot
+data %>%
+  ggplot( aes(x=name, y=value, fill=name)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.9) +
+    theme_ipsum() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("A boxplot with jitter") +
+    xlab("") +
+    coord_flip()

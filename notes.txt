@@ -1,0 +1,4 @@
+Is LCR prevalence related with protein size?
+Is LCR prevalence related with genome size?
+Are LCR most common in certain lineages?
+Are LCRs positions related with specific sites/regions of proteins?

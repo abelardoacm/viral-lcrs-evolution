@@ -1,0 +1,6 @@
+/home/arquea/Projects/Archaea_pangenomics/bin/0_Reduccion_redundancia.Rmd="034E0E60"
+/home/arquea/Projects/Archaea_pangenomics/bin/2_binary_pangenome_matrix.Rmd="6F998EC6"
+/home/arquea/Projects/LCRs2023/bin/0_Uniprot_Download_from_URL_API.py="AF291FC0"
+/home/arquea/Projects/LCRs2023/bin/1_From_Uniprot_tsv_to_fasta.Rmd="F3CFA5B1"
+/home/arquea/Projects/LCRs2023/bin/3_seg_output_to_df.Rmd="440FD0A3"
+/home/arquea/Projects/LCRs2023/bin/4_Post_By_Prevalence_by_GO.Rmd="B165D2B9"

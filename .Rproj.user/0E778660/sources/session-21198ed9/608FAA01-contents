@@ -1,0 +1,108 @@
+---
+title: "2_binary_pangenome_matrix"
+author: "Les nutries"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(foreach)
+library(doParallel)
+library(stringr)
+library(purrr)
+library(magrittr)
+```
+
+### Matriz presencia- ausencia
+
+```{r filter_matrix}
+homologues_dir_path <- "../results/GET_HOMOLOGUES_OUTPUT/gbk_files_homologues/"
+cluster_list_file_path <- list.files(path = homologues_dir_path, pattern=".cluster_list", full.names = TRUE)
+cluster_list_file <- read_lines(cluster_list_file_path[1])
+
+test_cluster <- grepl("cluster ", cluster_list_file)
+clusterverse <- cluster_list_file[test_cluster] %>% gsub("cluster ","",.) %>% gsub(" .*","",.) %>% unique()
+genomeverse <- cluster_list_file[!test_cluster] %>% gsub(": _","",.) %>% unique()
+
+raw_genomes_path <- "../data/All_raw_genomes/"
+
+pan_matrix <- matrix(nrow = length(clusterverse), ncol = length(genomeverse))
+colnames(pan_matrix) <- genomeverse
+rownames(pan_matrix) <- clusterverse
+pan_matrix[] <- 0L
+
+sink("../results/corrected_cluster_list_file.csv")
+for (e in cluster_list_file) {
+  if(grepl("cluster ", e)){
+    cur_clust <- e %>% gsub("cluster ", "", .) %>% gsub(" .*", "", .)
+  }else{
+    cur_genome <- e %>% gsub(": _", "", .)
+    cat(paste(cur_clust,cur_genome, sep = ","))
+    cat("\n")
+  }
+}
+sink()
+
+cluster_list_file.df <- read.csv("../results/corrected_cluster_list_file.csv", header = FALSE)
+colnames(cluster_list_file.df)<- c("cluster", "genome")
+
+clusterverse_indexverse <- data.frame(cluster = clusterverse, index_cluster = 1:length(clusterverse))
+genomeverse_indexverse <- data.frame(genome = genomeverse, index_genome = 1:length(genomeverse))
+
+merged1 <- merge(cluster_list_file.df, clusterverse_indexverse, by = intersect(names(cluster_list_file.df), names(clusterverse_indexverse)))
+
+panmatrix.df <- merge(merged1, genomeverse_indexverse, by = intersect(names(merged1), names(genomeverse_indexverse)))
+
+for (i in 1:nrow(panmatrix.df)) {
+  index_row <- panmatrix.df$index_cluster[i]
+  index_column <- panmatrix.df$index_genome[i]
+  pan_matrix[index_row,index_column] <- 1
+}
+
+# Register parallel backend
+num_cores <- detectCores()
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+# Helper function
+get_taxid <- function(g) {
+  g_gbk <- paste(raw_genomes_path, g, sep = "_")
+  cur_gbk_lines <- read_lines(g_gbk)
+  taxid_line <- 1
+  got_taxid <- TRUE
+
+  while (got_taxid == TRUE) {
+    l <- cur_gbk_lines[taxid_line]
+    taxid_line <- taxid_line + 1
+    if (any(grepl('db_xref=', l))) {
+      if (any(grepl('taxon:', l))) {
+        cur_taxid <- gsub("^.*:", "", l) %>% gsub("[^0-9.-]", "", .)
+        got_taxid <- FALSE
+        return(cur_taxid)
+      }
+    }
+  }
+}
+
+
+# Create data frame
+genomes_2_taxid.df <- data.frame(genome = genomeverse)
+
+# Process elements using foreach in parallel
+taxid_list <- foreach(g = genomes_2_taxid.df$genome, .combine = 'c', .packages = c('readr', 'magrittr')) %dopar% {
+  get_taxid(g)
+}
+
+# Add taxid column
+genomes_2_taxid.df$taxid <- taxid_list
+
+# Stop parallel backend
+stopCluster(cl)
+
+colnames(pan_matrix) <- genomes_2_taxid.df$taxid
+ 
+write.csv(pan_matrix, file = "../results/2_binary_matrix.csv")
+```
+

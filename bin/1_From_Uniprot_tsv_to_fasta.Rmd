@@ -1,0 +1,55 @@
+---
+title: "1_From_Uniprot_tsv_to_fasta"
+author: "Abelardo"
+date: "2023-03-27"
+output: html_document
+---
+
+El codigo de este archivo pretende cumplir la tarea de generar un archivo fasta desde una descarga cruda de Uniprot para ser analizado por LCRs mediante seg. Se pretende utilizar un EntryID de Uniprot como el identificador en el header de cada secuencia, y con ello regresar a los metadatos completos cuando sea necesario.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r arguments}
+Uniprot.tsv.filepath <- "../data/0_reviewed_Virus_Uniprot.tsv"
+```
+
+```{r output_names}
+basename.Uniprot.tsv.df <- basename(Uniprot.tsv.filepath)
+dirname.Uniprot.tsv.df <- dirname(Uniprot.tsv.filepath)
+
+basename.Uniprot.fasta <- gsub("^(.{2})","1_", basename.Uniprot.tsv.df) %>% gsub('.tsv','.fasta', .)
+basename.taxids.txt <- gsub("^(.{2})","1_", basename.Uniprot.tsv.df) %>% gsub('.tsv','_taxids.txt', .)
+
+filepath.Uniprot.fasta <- paste(dirname.Uniprot.tsv.df,basename.Uniprot.fasta,sep="/")
+filepath.taxids.txt <- paste(dirname.Uniprot.tsv.df,basename.taxids.txt,sep="/")
+
+```
+
+```{r input_read}
+Uniprot.tsv.df <- readr::read_tsv(Uniprot.tsv.filepath)
+```
+
+```{r body}
+fasta.lines <- vector(mode = "character", length = nrow(Uniprot.tsv.df))
+
+for (i in 1:nrow(Uniprot.tsv.df)) {
+  entry.cur <- Uniprot.tsv.df$Entry[i]
+  sequence <- Uniprot.tsv.df$Sequence[i]
+  header <- paste(">", entry.cur, sep = "")
+  fasta.lines[i] <- paste(header, sequence, sep = "\n")
+}
+
+write_lines(fasta.lines, filepath.Uniprot.fasta)
+```
+
+
+También servirá para crear un archivo de identificadores taxonómicos únicos (ncbi taxid), aunque este puede no necesitarse ya que el archivo de Uniprot contiene información sobre su clasificación.
+
+
+```{r}
+unique.taxids <- Uniprot.tsv.df$`Organism (ID)` %>% unique()
+write_lines(unique.taxids, filepath.taxids.txt)
+```

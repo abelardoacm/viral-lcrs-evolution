@@ -1,0 +1,28 @@
+{
+    "id": "2EF65A07",
+    "path": "~/Projects/LCRs2023/bin/4_Post_By_Prevalence_by_GO.Rmd",
+    "project_path": "bin/4_Post_By_Prevalence_by_GO.Rmd",
+    "type": "r_markdown",
+    "hash": "2259125978",
+    "contents": "",
+    "dirty": false,
+    "created": 1680154449140.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "111,32",
+        "scrollLine": "105",
+        "last_setup_crc32": "21198ed9c1a5e748"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1682447411,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1682447411288,
+    "read_only": false,
+    "read_only_alternatives": []
+}

@@ -1,0 +1,86 @@
+---
+title: "3_seg_output_to_df"
+author: "Abelardo"
+date: "2023-03-27"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(parallel)
+library(readr)
+library(stringr)
+library(magrittr)
+```
+
+```{r arguments}
+Uniprot.tsv.filepath <- "../data/0_reviewed_Virus_Uniprot.tsv"
+seg.complexity.filepath <- "../results/2_reviewed_Virus_Uniprot.fasta_complexity.faa"
+```
+
+```{r output_names}
+basename.Uniprot.tsv.df <- basename(Uniprot.tsv.filepath)
+dirname.Uniprot.tsv.df <- dirname(Uniprot.tsv.filepath)
+
+basename.seg.complexity <- basename(seg.complexity.filepath)
+dirname.seg.complexity.filepath <- dirname(seg.complexity.filepath)
+
+basename.seg.complexity.Uniprot.metadata <- gsub("^(.{2})","3_", basename.seg.complexity) %>% gsub("\\..*",'_metadata.tsv', .)
+filepath.seg.complexity.Uniprot.metadata <- paste(dirname.seg.complexity.filepath,basename.seg.complexity.Uniprot.metadata,sep="/")
+
+```
+
+```{r input_read}
+Uniprot.tsv.df <- readr::read_tsv(Uniprot.tsv.filepath)
+seg.complexity.lines <- readr::read_lines(seg.complexity.filepath)
+```
+
+```{r body}
+headers.positions <- str_detect(seg.complexity.lines, "^>") %>% which(.)
+
+parse_info <- function(e) {
+  input_string <- seg.complexity.lines[e]
+  cur_entry <- gsub("^>([[:alnum:]]+).*", "\\1", input_string)
+
+  pos_string <- gsub("^.*\\(([[:digit:]]+-[[:digit:]]+)\\).*", "\\1", input_string)
+  pos_list <- strsplit(pos_string, "-")[[1]]
+  start <- as.integer(pos_list[1])
+  end <- as.integer(pos_list[2])
+
+  complexity <- as.numeric(gsub("^.*complexity=([[:digit:].]+).*", "\\1", input_string))
+
+  window_lo_hi <- gsub("^.*\\(([[:digit:]./]+)\\)$", "\\1", input_string)
+  window_lo_hi_list <- strsplit(window_lo_hi, "/")[[1]]
+  window <- as.integer(window_lo_hi_list[1])
+  lo_cut <- as.numeric(window_lo_hi_list[2])
+  hi_cut <- as.numeric(window_lo_hi_list[3])
+
+  if (e == tail(headers.positions, n = 1)) {
+    sequence.range <- seq(from=(e+1), to=length(seg.complexity.lines))
+  } else {
+    sequence.range <- seq(from=(e+1), to=(headers.positions[which(headers.positions == e) + 1] - 1))
+  }
+
+  cur_sequence <- seg.complexity.lines[sequence.range] %>% paste(., collapse = "")
+  
+  data.frame(
+    Entry = cur_entry,
+    seg_Start = start,
+    seg_End = end,
+    seg_complexity = complexity,
+    window = window,
+    lo_cut = lo_cut,
+    hi_cut = hi_cut,
+    seg_sequence = cur_sequence,
+    stringsAsFactors = FALSE
+  )
+}
+
+num_cores <- detectCores()
+seg.complexity.df <- do.call("rbind", mclapply(headers.positions, parse_info, mc.cores = num_cores))
+seg.complexity.Uniprot.metadata.df <- merge(seg.complexity.df, Uniprot.tsv.df, by = intersect(names(seg.complexity.df), names(Uniprot.tsv.df)), all.x = TRUE)
+```
+
+```{r output_write}
+readr::write_tsv(seg.complexity.Uniprot.metadata.df,filepath.seg.complexity.Uniprot.metadata)
+```
