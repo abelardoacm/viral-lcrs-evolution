@@ -47,6 +47,7 @@ Distributed under the MIT License. See `LICENSE.md` for more information.
 ## Contact 📧
 
 Abelardo Aguilar Cámara - abelardoacm@ciencias.unam.mx
+Ingrid Miranda P. - ingridmipe@ciencias.unam.mx
 
 Project Link: https://github.com/abelardoacm/viral-lcrs-evolution
 
