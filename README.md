@@ -8,7 +8,7 @@ In this project, we aim to investigate:
 
 1. The prevalence of LCRs in viral genomes.
 2. The potential roles of these regions in viral lifecycle and host interactions.
-3. The evolutionary pressures shaping these regions.
+3. The evolutionary pressures shaping these regions and their maintenance.
 
 ## Getting Started 🚀
 
