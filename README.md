@@ -1,4 +1,4 @@
-# Viral LCRs Evolution Study 🧬🦠
+# Viral LCRs Evolution 🧬🦠
 
 Welcome to our project on the evolutionary study of Low Complexity Regions (LCRs) in viral genomes! This project uses various computational tools and statistical methods to analyze and understand the functional and evolutionary implications of LCRs in viruses.
 
